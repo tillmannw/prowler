@@ -242,6 +242,7 @@ int main(int argc, char *argv[]) {
 							if (session[j].connecting && session[j].peerlist_index != -1)
 								peerlist[session[j].peerlist_index].unresponsive = 0;
 									// TODO: queue up data for sending here
+									session_prepare_for_send(i, NULL, 0);
 						}
 					}
 					fprintf(logstd, "[%s]  seen %lu peers, %lu are active\n", timestr(), peerlist_size, active_peers);
@@ -271,21 +272,30 @@ int main(int argc, char *argv[]) {
 						}
 					}
 
-					session_delete(i);
 					session_terminate(i);
+					session_delete(i);
 				} else if (fds[i].revents & POLLIN) {
 					switch (bytes = session_receive(i)) {
 					case -1:
 						// receive error
-						session_delete(i);
 						session_terminate(i);
+						session_delete(i);
 					case 0:
 						// connection closed by peer, process received data
 						if (session_done(i)) session_terminate(i);
 						break;
 					default:
-						// TODO: process received data here
-
+						// process received data
+						switch (session_receive(i)) {
+						case -1:
+							// processing error
+							session_terminate(i);
+							session_delete(i);
+							break;
+						case 0:
+						default:
+							break;
+						}
 
 						if (session_done(i)) session_terminate(i);
 						break;
@@ -301,6 +311,7 @@ int main(int argc, char *argv[]) {
 						session[i].connecting = 0;
 
 						// TODO: queue up data for sending here
+						session_prepare_for_send(i, NULL, 0);
 						break;
 					}
 
@@ -308,8 +319,8 @@ int main(int argc, char *argv[]) {
 					switch (bytes = session_send(i)) {
 					case -1:
 						// send error
-						session_delete(i);
 						session_terminate(i);
+						session_delete(i);
 						break;
 					default:
 						if (session[i].txbytes == 0) {
@@ -321,8 +332,8 @@ int main(int argc, char *argv[]) {
 					}
 				} else {
 					// unhandled event, terminate session
-					session_delete(i);
 					session_terminate(i);
+					session_delete(i);
 				}
 			}
 
